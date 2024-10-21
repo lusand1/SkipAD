@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">SkipAD</string>
+    <string name="accessibility_service_label">Skip开屏广告</string>
+    <string name="accessibility_service_description">自动点击开屏广告的Skip按钮</string>
+    <string name="open_accessibility_service">打开无障碍服务</string>
+    <string name="allow_background_openUI">设置允许后台弹出界面</string>
+    <string name="set_grab_red_envelop">开启微信抢红包功能</string>
+    <string name="input_second">输入延时毫秒数</string>
+    <string name="ok">OK</string>
+</resources>
