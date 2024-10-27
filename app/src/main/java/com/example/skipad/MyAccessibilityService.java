@@ -159,26 +159,30 @@ public class MyAccessibilityService extends AccessibilityService {
             List<AccessibilityNodeInfo> idNodeList = nodeInfo.findAccessibilityNodeInfosByViewId(skipBtnId);
             if (idNodeList == null || idNodeList.isEmpty()) {
                 // 根据节点查找跳过按钮
-                switch (packageName) {
-                    case "com.snda.wifilocating":
-                        AccessibilityNodeInfo traversalNode = findClickableViewInArea(nodeInfo);
-                        if (traversalNode != null) {
-                            if (traversalNode.isClickable()) {
-                                traversalNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                                Log.d(TAG, "skipAd: 找到跳过位置(控件点击)");
-                            } else {
-                                traversalNode.getBoundsInScreen(rectSkip);
-                                if (rectSkip.equals(new Rect(1244, 193, 1384, 333))) {
-                                    clickNode(rectSkip);
-                                    Log.d(TAG, "skipAd: 找到跳过位置(坐标点击)");
-                                }
-                            }
-                        }
-                    case "com.cainiao.wireless":
-                        // TODO: 2024/10/19
-                        break;
-                    default:
-                        break;
+                AccessibilityNodeInfo traversalNode = findClickableViewInArea(nodeInfo);
+                if (traversalNode != null) {
+                    Log.d(TAG, "skipAd: 遍历找到跳过位置(控件点击)");
+                    if (
+                            !nodeInfo.findAccessibilityNodeInfosByText("详情页或第三方应用").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("扭一扭").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("扭动手机").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("翻转手机").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("向上滑动").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("滑一滑 或 扭一扭").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("摇一摇 或 点击图标").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("转动手机或点击图标").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("扭动或点击立即下载").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("下载或跳转第三方应用").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("向上滑动或点击按钮查看").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("向上滑动查看").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("点击查看详情").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("点击跳转详情页面").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("查看详情或跳转第三方应用").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("上滑或点击跳转至详情页").isEmpty()
+                            || !nodeInfo.findAccessibilityNodeInfosByText("跳转详情页面或第三方应用").isEmpty()
+                    ) {
+                        traversalNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    }
                 }
             } else {
                 AccessibilityNodeInfo idNode = idNodeList.get(0);
@@ -209,18 +213,10 @@ public class MyAccessibilityService extends AccessibilityService {
     }
 
     private boolean rectInArea(Rect rectSkip) {
-        if (leftTop.contains(rectSkip) || rightTop.contains(rectSkip) || rightBottom.contains(rectSkip)) {
-            int area = (rectSkip.bottom - rectSkip.top) * (rectSkip.right - rectSkip.left);
-            if (area < 57900 && area > 4600) {
-                return true;
-            } else {
-                Log.d(TAG, "skipAd: 跳过控件" + rectSkip + "面积不在范围内（4600, 57900），不处理");
-            }
-        }
-        return false;
+        return leftTop.contains(rectSkip) || rightTop.contains(rectSkip) || rightBottom.contains(rectSkip);
     }
 
-    // 遍历所有节点及其子节点
+    // 遍历所有节点及其子节点, 查找可点击的控件
     private AccessibilityNodeInfo findClickableViewInArea(AccessibilityNodeInfo node) {
         if (node == null) return null;
 
