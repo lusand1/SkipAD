@@ -18,6 +18,7 @@ public class MyAccessibilityService extends AccessibilityService {
     private AccessibilityNodeInfo nodeInfo;
     private boolean isGoBack = false;
     private Rect leftTop, rightTop, rightBottom;
+    private static final int MAX_RECURSION_DEPTH = 15;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -159,9 +160,8 @@ public class MyAccessibilityService extends AccessibilityService {
             List<AccessibilityNodeInfo> idNodeList = nodeInfo.findAccessibilityNodeInfosByViewId(skipBtnId);
             if (idNodeList == null || idNodeList.isEmpty()) {
                 // 根据节点查找跳过按钮
-                AccessibilityNodeInfo traversalNode = findClickableViewInArea(nodeInfo);
+                AccessibilityNodeInfo traversalNode = findClickableViewInArea(nodeInfo, 0);
                 if (traversalNode != null) {
-                    Log.d(TAG, "skipAd: 遍历找到跳过位置(控件点击)");
                     if (
                             !nodeInfo.findAccessibilityNodeInfosByText("详情页或第三方应用").isEmpty()
                             || !nodeInfo.findAccessibilityNodeInfosByText("扭一扭").isEmpty()
@@ -181,6 +181,7 @@ public class MyAccessibilityService extends AccessibilityService {
                             || !nodeInfo.findAccessibilityNodeInfosByText("上滑或点击跳转至详情页").isEmpty()
                             || !nodeInfo.findAccessibilityNodeInfosByText("跳转详情页面或第三方应用").isEmpty()
                     ) {
+                        Log.d(TAG, "skipAd: 遍历找到跳过位置(控件点击)");
                         traversalNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                     }
                 }
@@ -217,8 +218,8 @@ public class MyAccessibilityService extends AccessibilityService {
     }
 
     // 遍历所有节点及其子节点, 查找可点击的控件
-    private AccessibilityNodeInfo findClickableViewInArea(AccessibilityNodeInfo node) {
-        if (node == null) return null;
+    private AccessibilityNodeInfo findClickableViewInArea(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > MAX_RECURSION_DEPTH) return null;
 
         // 检查节点是否为 android.view.View 并且可点击
         String className = (String) node.getClassName();
@@ -237,7 +238,7 @@ public class MyAccessibilityService extends AccessibilityService {
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
-                AccessibilityNodeInfo result = findClickableViewInArea(child);
+                AccessibilityNodeInfo result = findClickableViewInArea(child, depth + 1);
                 if (result != null) {
                     return result;
                 }
