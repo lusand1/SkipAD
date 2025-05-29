@@ -39,6 +39,7 @@ public class MyAccessibilityService extends AccessibilityService {
 
     // 处理窗口内容变化
     private void processWindowContentChanged() {
+        if (nodeInfo == null) return;
         Rect screenBounds = new Rect();
         nodeInfo.getBoundsInScreen(screenBounds);
 
@@ -46,11 +47,14 @@ public class MyAccessibilityService extends AccessibilityService {
         rightTop = createRect(screenBounds.right - 400, screenBounds.top, screenBounds.right, screenBounds.top + 340);
         rightBottom = createRect(screenBounds.right - 400, screenBounds.bottom - 340, screenBounds.right, screenBounds.bottom);
 
-        String packageName = nodeInfo.getPackageName().toString();
+        CharSequence pkgName = nodeInfo.getPackageName();
+        if (pkgName == null) return;
+        String packageName = pkgName.toString();
 
         if (packageName.equals("com.tencent.mm")) {
             handleWeChatRedEnvelope();
-        } else {// 忽略安卓设置和MIUI桌面的变化
+        } else {
+            // 忽略安卓设置和MIUI桌面的变化
             if (packageName.matches("com\\.android\\..*") || packageName.equals("com.miui.home")) {
                 return;
             }
@@ -60,6 +64,7 @@ public class MyAccessibilityService extends AccessibilityService {
 
     // 处理微信红包
     private void handleWeChatRedEnvelope() {
+        if (nodeInfo == null) return;
         SharedPreferences sharedPreferences = getSharedPreferences("time_num", MODE_PRIVATE);
         boolean isGrabRedEnvelopeEnabled = sharedPreferences.getBoolean("open_grab", true);
         if (!isGrabRedEnvelopeEnabled) return;
@@ -72,16 +77,21 @@ public class MyAccessibilityService extends AccessibilityService {
         List<AccessibilityNodeInfo> yuanNodes = nodeInfo.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/iyz");
         List<AccessibilityNodeInfo> smsListNodes = nodeInfo.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/cj1");
 
-        // 群聊界面、开红包界面、开后界面、消息列表界面
-        if (titleNodes != null && !titleNodes.isEmpty()) {
-            if (titleNodes.get(0).getText().toString().matches(".*\\(\\d+\\).*")) {
+        // 群聊界面
+        if (titleNodes != null && !titleNodes.isEmpty() && titleNodes.get(0) != null) {
+            CharSequence titleText = titleNodes.get(0).getText();
+            if (titleText != null && titleText.toString().matches(".*\\(\\d+\\).*")) {
                 List<AccessibilityNodeInfo> smsNodes = nodeInfo.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/bkg");
-                if (!smsNodes.isEmpty()) {
+                if (smsNodes != null && !smsNodes.isEmpty()) {
                     for (AccessibilityNodeInfo smsNode : smsNodes) {
-                        if (!smsNode.findAccessibilityNodeInfosByText("微信红包").isEmpty()
-                                && !smsNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/a3o").isEmpty() // 红包图标
-                                && smsNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/a3m").isEmpty()
-                                && smsNode.isClickable()) { // 领取状态id，已领取、专属、过期
+                        if (smsNode == null) continue;
+                        List<AccessibilityNodeInfo> redPacketTexts = smsNode.findAccessibilityNodeInfosByText("微信红包");
+                        List<AccessibilityNodeInfo> iconNodes = smsNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/a3o");
+                        List<AccessibilityNodeInfo> stateNodes = smsNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/a3m");
+                        if (redPacketTexts != null && !redPacketTexts.isEmpty() &&
+                                iconNodes != null && !iconNodes.isEmpty() &&
+                                (stateNodes == null || stateNodes.isEmpty()) &&
+                                smsNode.isClickable()) { // 领取状态id，已领取、专属、过期
                             Log.d(TAG, "handleWeChatRedEnvelope: 群聊界面，找到未领取红包消息");
                             smsNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                             break;
@@ -89,35 +99,63 @@ public class MyAccessibilityService extends AccessibilityService {
                     }
                 }
             }
-        } else if (!openNodes.isEmpty() && openNodes.get(0).isClickable() && openNodes.get(0).getContentDescription().toString().equals("开")
-                && !closeNodes.isEmpty() && closeNodes.get(0).isClickable() && closeNodes.get(0).getContentDescription().toString().equals("关闭")) {
-            Log.d(TAG, "handleWeChatRedEnvelope: 开红包界面，找到开、关按钮");
-            int delay_time = sharedPreferences.getInt("delay_time", 500);
-            try {
-                Thread.sleep(delay_time);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+        }
+        // 开红包界面
+        else if (openNodes != null && !openNodes.isEmpty() && openNodes.get(0) != null &&
+                closeNodes != null && !closeNodes.isEmpty() && closeNodes.get(0) != null) {
+            AccessibilityNodeInfo openNode = openNodes.get(0);
+            AccessibilityNodeInfo closeNode = closeNodes.get(0);
+            CharSequence openDesc = openNode.getContentDescription();
+            CharSequence closeDesc = closeNode.getContentDescription();
+            if (openNode.isClickable() && openDesc != null && openDesc.toString().equals("开") &&
+                    closeNode.isClickable() && closeDesc != null && closeDesc.toString().equals("关闭")) {
+                Log.d(TAG, "handleWeChatRedEnvelope: 开红包界面，找到开、关按钮");
+                int delay_time = sharedPreferences.getInt("delay_time", 500);
+                try {
+                    Thread.sleep(delay_time);
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "Sleep interrupted", e);
+                }
+                openNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                isGoBack = true;
             }
-            openNodes.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            isGoBack = true;
-        } else if (!backNodes.isEmpty() && backNodes.get(0).isClickable() && backNodes.get(0).getContentDescription().toString().equals("返回")
-                && !moreNodes.isEmpty() && moreNodes.get(0).isClickable() && moreNodes.get(0).getContentDescription().toString().equals("更多")
-                && !yuanNodes.isEmpty() && yuanNodes.get(0).getText().toString().equals("元")) {
-            if (isGoBack) {
-                Log.d(TAG, "handleWeChatRedEnvelope: 开红包后界面");
-                backNodes.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                isGoBack = false;
+        }
+        // 开后界面
+        else if (backNodes != null && !backNodes.isEmpty() && backNodes.get(0) != null &&
+                moreNodes != null && !moreNodes.isEmpty() && moreNodes.get(0) != null &&
+                yuanNodes != null && !yuanNodes.isEmpty() && yuanNodes.get(0) != null) {
+            AccessibilityNodeInfo backNode = backNodes.get(0);
+            AccessibilityNodeInfo moreNode = moreNodes.get(0);
+            AccessibilityNodeInfo yuanNode = yuanNodes.get(0);
+            CharSequence backDesc = backNode.getContentDescription();
+            CharSequence moreDesc = moreNode.getContentDescription();
+            CharSequence yuanText = yuanNode.getText();
+            if (backNode.isClickable() && backDesc != null && backDesc.toString().equals("返回") &&
+                    moreNode.isClickable() && moreDesc != null && moreDesc.toString().equals("更多") &&
+                    yuanText != null && yuanText.toString().equals("元")) {
+                if (isGoBack) {
+                    Log.d(TAG, "handleWeChatRedEnvelope: 开红包后界面");
+                    backNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    isGoBack = false;
+                }
             }
-        } else if (!smsListNodes.isEmpty()) {
+        }
+        // 消息列表界面
+        else if (smsListNodes != null && !smsListNodes.isEmpty()) {
             for (AccessibilityNodeInfo smsListNode : smsListNodes) {
+                if (smsListNode == null) continue;
                 List<AccessibilityNodeInfo> redBaoSmsNodes = smsListNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/ht5");
-                if (!redBaoSmsNodes.isEmpty() && redBaoSmsNodes.get(0).getText().toString().contains("[微信红包] ")
-                        && smsListNode.isClickable()
-                        && (!smsListNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/o_u").isEmpty() //未读消息
-                        || !smsListNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/a_h").isEmpty()) //未读免打扰消息
-                ) {
-                    smsListNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    break;
+                if (redBaoSmsNodes != null && !redBaoSmsNodes.isEmpty() && redBaoSmsNodes.get(0) != null) {
+                    CharSequence smsText = redBaoSmsNodes.get(0).getText();
+                    if (smsText != null && smsText.toString().contains("[微信红包] ") &&
+                            smsListNode.isClickable() &&
+                            ((smsListNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/o_u") != null &&
+                                    !smsListNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/o_u").isEmpty()) ||
+                                    (smsListNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/a_h") != null &&
+                                            !smsListNode.findAccessibilityNodeInfosByViewId("com.tencent.mm:id/a_h").isEmpty()))) {
+                        smsListNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        break;
+                    }
                 }
             }
         }
@@ -125,9 +163,10 @@ public class MyAccessibilityService extends AccessibilityService {
 
     // 通过文本跳过广告
     private void skipAd(String packageName) {
+        if (nodeInfo == null) return;
         List<AccessibilityNodeInfo> textNodeList = nodeInfo.findAccessibilityNodeInfosByText("跳过");
         Rect rectSkip = new Rect();
-        if (textNodeList == null || textNodeList.isEmpty()) {
+        if (textNodeList == null || textNodeList.isEmpty() || textNodeList.get(0) == null) {
             // 通过ID跳过广告
             String skipBtnId;
             switch (packageName) {
@@ -158,63 +197,67 @@ public class MyAccessibilityService extends AccessibilityService {
                     break;
             }
             List<AccessibilityNodeInfo> idNodeList = nodeInfo.findAccessibilityNodeInfosByViewId(skipBtnId);
-            if (idNodeList == null || idNodeList.isEmpty()) {
+            if (idNodeList == null || idNodeList.isEmpty() || idNodeList.get(0) == null) {
                 // 根据节点查找跳过按钮
                 AccessibilityNodeInfo traversalNode = findClickableViewInArea(nodeInfo, 0);
                 if (traversalNode != null) {
-                    if (
-                            !nodeInfo.findAccessibilityNodeInfosByText("详情页或第三方应用").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("扭一扭").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("扭动手机").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("翻转手机").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("向上滑动").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("滑一滑 或 扭一扭").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("摇一摇 或 点击图标").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("转动手机或点击图标").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("扭动或点击立即下载").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("下载或跳转第三方应用").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("向上滑动或点击按钮查看").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("向上滑动查看").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("点击查看详情").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("点击跳转详情页面").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("查看详情或跳转第三方应用").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("上滑或点击跳转至详情页").isEmpty()
-                            || !nodeInfo.findAccessibilityNodeInfosByText("跳转详情页面或第三方应用").isEmpty()
-                    ) {
+                    if ((nodeInfo.findAccessibilityNodeInfosByText("详情页或第三方应用") != null && !nodeInfo.findAccessibilityNodeInfosByText("详情页或第三方应用").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("扭一扭") != null && !nodeInfo.findAccessibilityNodeInfosByText("扭一扭").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("扭动手机") != null && !nodeInfo.findAccessibilityNodeInfosByText("扭动手机").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("翻转手机") != null && !nodeInfo.findAccessibilityNodeInfosByText("翻转手机").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("向上滑动") != null && !nodeInfo.findAccessibilityNodeInfosByText("向上滑动").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("滑一滑 或 扭一扭") != null && !nodeInfo.findAccessibilityNodeInfosByText("滑一滑 或 扭一扭").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("摇一摇 或 点击图标") != null && !nodeInfo.findAccessibilityNodeInfosByText("摇一摇 或 点击图标").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("转动手机或点击图标") != null && !nodeInfo.findAccessibilityNodeInfosByText("转动手机或点击图标").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("扭动或点击立即下载") != null && !nodeInfo.findAccessibilityNodeInfosByText("扭动或点击立即下载").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("下载或跳转第三方应用") != null && !nodeInfo.findAccessibilityNodeInfosByText("下载或跳转第三方应用").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("向上滑动或点击按钮查看") != null && !nodeInfo.findAccessibilityNodeInfosByText("向上滑动或点击按钮查看").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("向上滑动查看") != null && !nodeInfo.findAccessibilityNodeInfosByText("向上滑动查看").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("点击查看详情") != null && !nodeInfo.findAccessibilityNodeInfosByText("点击查看详情").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("点击跳转详情页面") != null && !nodeInfo.findAccessibilityNodeInfosByText("点击跳转详情页面").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("查看详情或跳转第三方应用") != null && !nodeInfo.findAccessibilityNodeInfosByText("查看详情或跳转第三方应用").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("上滑或点击跳转至详情页") != null && !nodeInfo.findAccessibilityNodeInfosByText("上滑或点击跳转至详情页").isEmpty())
+                            || (nodeInfo.findAccessibilityNodeInfosByText("跳转详情页面或第三方应用") != null && !nodeInfo.findAccessibilityNodeInfosByText("跳转详情页面或第三方应用").isEmpty())) {
                         Log.d(TAG, "skipAd: 遍历找到跳过位置(控件点击)");
                         traversalNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                     }
                 }
             } else {
                 AccessibilityNodeInfo idNode = idNodeList.get(0);
-                idNode.getBoundsInScreen(rectSkip);
-                if (rectInArea(rectSkip)) {
-                    if (idNode.isClickable()) {
-                        idNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        Log.d(TAG, "skipAd: 找到跳过id(控件点击)");
-                    } else {
-                        clickNode(rectSkip);
-                        Log.d(TAG, "skipAd: 找到跳过id(坐标点击)");
+                if (idNode != null) {
+                    idNode.getBoundsInScreen(rectSkip);
+                    if (rectInArea(rectSkip)) {
+                        if (idNode.isClickable()) {
+                            idNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            Log.d(TAG, "skipAd: 找到跳过id(控件点击)");
+                        } else {
+                            clickNode(rectSkip);
+                            Log.d(TAG, "skipAd: 找到跳过id(坐标点击)");
+                        }
                     }
                 }
             }
         } else {
             AccessibilityNodeInfo textNode = textNodeList.get(0);
-            textNode.getBoundsInScreen(rectSkip);
-            if (rectInArea(rectSkip)) {
-                if (textNode.isClickable()) {
-                    textNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    Log.d(TAG, "skipAd: 找到跳过文本(控件点击)");
-                } else {
-                    clickNode(rectSkip);
-                    Log.d(TAG, "skipAd: 找到跳过文本(坐标点击)");
+            if (textNode != null) {
+                textNode.getBoundsInScreen(rectSkip);
+                if (rectInArea(rectSkip)) {
+                    if (textNode.isClickable()) {
+                        textNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        Log.d(TAG, "skipAd: 找到跳过文本(控件点击)");
+                    } else {
+                        clickNode(rectSkip);
+                        Log.d(TAG, "skipAd: 找到跳过文本(坐标点击)");
+                    }
                 }
             }
         }
     }
 
     private boolean rectInArea(Rect rectSkip) {
-        return leftTop.contains(rectSkip) || rightTop.contains(rectSkip) || rightBottom.contains(rectSkip);
+        return (leftTop != null && leftTop.contains(rectSkip)) ||
+                (rightTop != null && rightTop.contains(rectSkip)) ||
+                (rightBottom != null && rightBottom.contains(rectSkip));
     }
 
     // 遍历所有节点及其子节点, 查找可点击的控件
@@ -222,8 +265,8 @@ public class MyAccessibilityService extends AccessibilityService {
         if (node == null || depth > MAX_RECURSION_DEPTH) return null;
 
         // 检查节点是否为 android.view.View 并且可点击
-        String className = (String) node.getClassName();
-        if (node.isClickable() && className != null && className.equals("android.view.View")) {
+        CharSequence className = node.getClassName();
+        if (node.isClickable() && className != null && "android.view.View".contentEquals(className)) {
             // 获取节点在屏幕中的位置
             Rect rectSkip = new Rect();
             node.getBoundsInScreen(rectSkip);
@@ -251,14 +294,19 @@ public class MyAccessibilityService extends AccessibilityService {
     // 处理通知栏消息
     private void handleNotification(AccessibilityEvent event) {
         List<CharSequence> texts = event.getText();
+        if (texts == null) return;
         for (CharSequence text : texts) {
-            if (text.toString().contains("[微信红包]") && event.getParcelableData() instanceof Notification) {
+            if (text != null && text.toString().contains("[微信红包]") && event.getParcelableData() instanceof Notification) {
                 Notification notification = (Notification) event.getParcelableData();
-                PendingIntent pendingIntent = notification.contentIntent;
-                try {
-                    pendingIntent.send();
-                } catch (PendingIntent.CanceledException e) {
-                    Log.d(TAG, "PendingIntent Canceled");
+                if (notification != null) {
+                    PendingIntent pendingIntent = notification.contentIntent;
+                    if (pendingIntent != null) {
+                        try {
+                            pendingIntent.send();
+                        } catch (PendingIntent.CanceledException e) {
+                            Log.d(TAG, "PendingIntent Canceled");
+                        }
+                    }
                 }
             }
         }
